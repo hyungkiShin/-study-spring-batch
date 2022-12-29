@@ -1,10 +1,13 @@
 package spring.batch.part3;
 
+import io.micrometer.core.instrument.util.StringUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.Job;
+import org.springframework.batch.core.JobParameters;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
+import org.springframework.batch.core.configuration.annotation.JobScope;
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.step.tasklet.Tasklet;
@@ -13,6 +16,7 @@ import org.springframework.batch.item.ItemReader;
 import org.springframework.batch.item.ItemWriter;
 import org.springframework.batch.item.support.ListItemReader;
 import org.springframework.batch.repeat.RepeatStatus;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -38,14 +42,15 @@ public class ChunkProcessingConfiguration {
         return jobBuilderFactory.get("chunkProcessingJob")
                 .incrementer(new RunIdIncrementer())
                 .start(this.taskBaseStep())
-                .next(this.chunkBaseStep())
+                .next(this.chunkBaseStep(null)) // 여기가 null 이여도 동작을 하는 이유는 아래에서 @JobScope 를 설정 했기 때문이다.
                 .build();
     }
 
     @Bean
-    public Step chunkBaseStep() {
+    @JobScope
+    public Step chunkBaseStep(@Value("#{jobParameters[chunkSize]}") String chunkSize) {
         return stepBuilderFactory.get("chunkBaseStep")
-                .<String, String>chunk(10)
+                .<String, String>chunk(StringUtils.isNotEmpty(chunkSize) ? Integer.parseInt(chunkSize) : 10)
                 .reader(itemReader())
                 .processor(itemProcessor())
                 .writer(itemWriter())
@@ -99,7 +104,11 @@ public class ChunkProcessingConfiguration {
             // StepExecution 는 읽은 Item 크기를 저장 할 수 있다. -> 조회도 가능 하다
             StepExecution stepExecution = contribution.getStepExecution();
 
-            int chunkSize = 10;
+            JobParameters jobParameters = stepExecution.getJobParameters(); // jobParameter 를 가져온다.
+
+            String value = jobParameters.getString("chunkSize", "10");
+            int chunkSize = StringUtils.isNotEmpty(value) ? Integer.parseInt(value) : 10;
+
             int fromIndex = stepExecution.getReadCount(); // chunk 에서 읽은 item 의 크기 를 가져와서 할당해준다.
             int toIndex = fromIndex + chunkSize; // fromIndex 에 chunkSize 를 더해준다. -> fromIndex 부터 chunkSize (10) 개 의 item 만큼 읽어온다.
 
