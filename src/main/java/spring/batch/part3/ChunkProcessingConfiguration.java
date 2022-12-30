@@ -9,6 +9,7 @@ import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
 import org.springframework.batch.core.configuration.annotation.JobScope;
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
+import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.item.ItemProcessor;
@@ -74,7 +75,7 @@ public class ChunkProcessingConfiguration {
     public Step taskBaseStep() {
 
         return stepBuilderFactory.get("taskBaseStep")
-                .tasklet(this.taskLet())
+                .tasklet(this.taskLet(null))
                 .build();
     }
 
@@ -96,7 +97,10 @@ public class ChunkProcessingConfiguration {
      }
      * ----------------------------------------
      */
-    private Tasklet taskLet() {
+
+    @Bean
+    @StepScope
+    public Tasklet taskLet(@Value("#{jobParameters[chunkSize]}") String chunkSizeValue) {
         List<String> items = getItems(); // getItems 로 생성했던 100 개 가 담길 list 를 밖으로 꺼내준다.
 
         return (contribution, chunkContext) -> {
@@ -106,8 +110,10 @@ public class ChunkProcessingConfiguration {
 
             JobParameters jobParameters = stepExecution.getJobParameters(); // jobParameter 를 가져온다.
 
-            String value = jobParameters.getString("chunkSize", "10");
-            int chunkSize = StringUtils.isNotEmpty(value) ? Integer.parseInt(value) : 10;
+//            String value = jobParameters.getString("chunkSize", "10");
+//            int chunkSize = StringUtils.isNotEmpty(value) ? Integer.parseInt(value) : 10;
+            int chunkSize = StringUtils.isNotEmpty(chunkSizeValue) ? Integer.parseInt(chunkSizeValue) : 10;
+
 
             int fromIndex = stepExecution.getReadCount(); // chunk 에서 읽은 item 의 크기 를 가져와서 할당해준다.
             int toIndex = fromIndex + chunkSize; // fromIndex 에 chunkSize 를 더해준다. -> fromIndex 부터 chunkSize (10) 개 의 item 만큼 읽어온다.
