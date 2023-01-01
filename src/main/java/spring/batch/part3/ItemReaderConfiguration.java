@@ -9,10 +9,12 @@ import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.item.ItemWriter;
 import org.springframework.batch.item.database.JdbcCursorItemReader;
 import org.springframework.batch.item.database.JdbcPagingItemReader;
+import org.springframework.batch.item.database.JpaCursorItemReader;
 import org.springframework.batch.item.database.Order;
 import org.springframework.batch.item.database.PagingQueryProvider;
 import org.springframework.batch.item.database.builder.JdbcCursorItemReaderBuilder;
 import org.springframework.batch.item.database.builder.JdbcPagingItemReaderBuilder;
+import org.springframework.batch.item.database.builder.JpaCursorItemReaderBuilder;
 import org.springframework.batch.item.database.support.SqlPagingQueryProviderFactoryBean;
 import org.springframework.batch.item.file.FlatFileItemReader;
 import org.springframework.batch.item.file.builder.FlatFileItemReaderBuilder;
@@ -21,8 +23,8 @@ import org.springframework.batch.item.file.transform.DelimitedLineTokenizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.jdbc.core.BeanPropertyRowMapper;
 
+import javax.persistence.EntityManagerFactory;
 import javax.sql.DataSource;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -37,13 +39,16 @@ public class ItemReaderConfiguration {
     private final JobBuilderFactory jobBuilderFactory;
     private final StepBuilderFactory stepBuilderFactory;
     private final DataSource dataSource;
+    private final EntityManagerFactory entityManagerFactory;
 
     public ItemReaderConfiguration(JobBuilderFactory jobBuilderFactory,
                                    StepBuilderFactory stepBuilderFactory,
-                                   DataSource dataSource) {
+                                   DataSource dataSource,
+                                   EntityManagerFactory entityManagerFactory) {
         this.jobBuilderFactory = jobBuilderFactory;
         this.stepBuilderFactory = stepBuilderFactory;
         this.dataSource = dataSource;
+        this.entityManagerFactory = entityManagerFactory;
     }
 
     @Bean
@@ -54,6 +59,7 @@ public class ItemReaderConfiguration {
                 .next(this.csvFileStep())
                 .next(this.jdbcCursorStep())
                 .next(this.jdbcPagingStep())
+                .next(this.jpaStep())
                 .build();
     }
 
@@ -91,6 +97,26 @@ public class ItemReaderConfiguration {
                 .reader(jdbcPagingItemReader())
                 .writer(itemWriter())
                 .build();
+    }
+
+    @Bean
+    public Step jpaStep() throws Exception {
+        return stepBuilderFactory.get("jpaStep")
+                .<Person, Person>chunk(10)
+                .reader(jpaCursorItemReader())
+                .writer(itemWriter())
+                .build();
+    }
+
+    private JpaCursorItemReader<Person> jpaCursorItemReader() throws Exception {
+        JpaCursorItemReader<Person> itemReader = new JpaCursorItemReaderBuilder<Person>()
+                .name("jpaCursorItemReader")
+                .entityManagerFactory(entityManagerFactory)
+                .queryString("select p from Person p")
+                .build();
+
+        itemReader.afterPropertiesSet();
+        return itemReader;
     }
 
     private JdbcCursorItemReader<Person> jdbcCursorItemReader() throws Exception {
@@ -132,6 +158,7 @@ public class ItemReaderConfiguration {
         sortKeys.put("id", Order.ASCENDING);
 
         queryProvider.setSortKeys(sortKeys);
+
 
         return queryProvider.getObject();
     }
